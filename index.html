@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>End-of-Life Legacy Curriculum Builder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+<script src="https://unpkg.com/marked@9.1.6/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        sage: { 50:'#f6f7f4', 100:'#e8ebe3', 200:'#d1d7c7', 300:'#b3bda3', 400:'#94a37e', 500:'#788a63', 600:'#5d6d4e', 700:'#495640', 800:'#3c4635', 900:'#333b2e' },
+        warm: { 50:'#fdf8f3', 100:'#f9edde', 200:'#f2d9bc', 300:'#e9bf91', 400:'#dea064', 500:'#d58844', 600:'#c17039', 700:'#a15830', 800:'#81472c', 900:'#6a3b26' },
+        plum: { 50:'#faf5f7', 100:'#f5eaef', 200:'#edd6e1', 300:'#dfb5c8', 400:'#cb8ba8', 500:'#b5688c', 600:'#9c4e72', 700:'#833d5c', 800:'#6d354d', 900:'#5d2f43' },
+      },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        serif: ['Merriweather', 'serif'],
+      }
+    }
+  }
+}
+</script>
+<style>
+  [x-cloak] { display: none !important; }
+  .fade-in { animation: fadeIn 0.4s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .spinner { border: 3px solid rgba(255,255,255,0.3); border-top: 3px solid white; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .module-card { transition: all 0.2s ease; }
+  .module-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+  .prose h1, .prose h2, .prose h3 { font-family: 'Merriweather', serif; }
+  @media print {
+    .no-print { display: none !important; }
+    .print-only { display: block !important; }
+    body { font-size: 12pt; }
+  }
+  .tab-active { border-bottom: 3px solid #5d6d4e; color: #5d6d4e; font-weight: 600; }
+</style>
+</head>
+<body class="bg-sage-50 font-sans text-gray-800 min-h-screen" x-data="app()" x-init="init()">
+
+<!-- Header -->
+<header class="bg-white shadow-sm sticky top-0 z-50 no-print">
+  <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🕊️</span>
+      <div>
+        <h1 class="text-lg font-serif font-bold text-sage-800 leading-tight">Legacy Curriculum Builder</h1>
+        <p class="text-xs text-sage-500">End-of-Life Education Authoring</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="showSaved = !showSaved; showSaved && loadSavedCurricula()" class="p-2 rounded-lg hover:bg-sage-100 text-sage-600 relative" title="Saved Curricula">
+        📚
+        <span x-show="savedCurricula.length > 0" class="absolute -top-1 -right-1 bg-warm-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" x-text="savedCurricula.length"></span>
+      </button>
+      <button @click="resetForm()" class="p-2 rounded-lg hover:bg-sage-100 text-sage-600" title="New Curriculum">➕</button>
+    </div>
+  </div>
+</header>
+
+<!-- Saved Curricula Drawer -->
+<div x-show="showSaved" x-cloak x-transition class="fixed inset-0 z-50 no-print">
+  <div class="absolute inset-0 bg-black/30" @click="showSaved = false"></div>
+  <div class="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white shadow-xl overflow-y-auto">
+    <div class="p-4 border-b flex items-center justify-between">
+      <h2 class="font-serif font-bold text-lg">📚 Saved Curricula</h2>
+      <button @click="showSaved = false" class="p-2 text-gray-500 hover:text-gray-800">✕</button>
+    </div>
+    <div class="p-4 space-y-3">
+      <template x-if="savedCurricula.length === 0">
+        <p class="text-gray-400 text-center py-8">No saved curricula yet.<br>Build your first one! 🌱</p>
+      </template>
+      <template x-for="(curr, idx) in savedCurricula" :key="idx">
+        <div class="bg-sage-50 rounded-xl p-4 module-card cursor-pointer" @click="loadCurriculum(curr); showSaved = false">
+          <div class="flex justify-between items-start">
+            <div>
+              <h3 class="font-semibold text-sage-800" x-text="curr.orgName || 'Untitled'"></h3>
+              <p class="text-xs text-sage-500" x-text="new Date(curr.savedAt).toLocaleDateString()"></p>
+              <p class="text-xs text-sage-400 mt-1" x-text="(curr.modules?.length || 0) + ' modules'"></p>
+            </div>
+            <button @click.stop="deleteCurriculum(idx)" class="text-red-400 hover:text-red-600 p-1">🗑️</button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<main class="max-w-4xl mx-auto px-4 py-6 pb-24">
+
+  <!-- Step Indicator -->
+  <div class="flex items-center justify-center gap-2 mb-6 no-print" x-show="!currentCurriculum">
+    <template x-for="(s, i) in steps" :key="i">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-all"
+             :class="step > i ? 'bg-sage-600 text-white' : step === i ? 'bg-sage-500 text-white ring-4 ring-sage-200' : 'bg-sage-200 text-sage-500'"
+             x-text="i + 1"></div>
+        <span class="text-xs text-sage-500 hidden sm:inline" x-text="s"></span>
+        <div x-show="i < steps.length - 1" class="w-8 h-0.5 bg-sage-200"></div>
+      </div>
+    </template>
+  </div>
+
+  <!-- Step 1: Organization Profile -->
+  <div x-show="step === 0 && !currentCurriculum" x-cloak class="fade-in space-y-5">
+    <div class="bg-white rounded-2xl shadow-sm p-6">
+      <h2 class="font-serif text-xl font-bold text-sage-800 mb-1">🏥 Organization Profile</h2>
+      <p class="text-sage-500 text-sm mb-5">Tell us about your organization so we can tailor the curriculum.</p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Organization Name *</label>
+          <input x-model="form.orgName" type="text" placeholder="e.g., Hope Hospice Center" class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 focus:border-transparent text-base">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Organization Type *</label>
+          <select x-model="form.orgType" class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 bg-white text-base">
+            <option value="">Select type...</option>
+            <option>Hospice Program</option>
+            <option>Community Center</option>
+            <option>Religious Organization</option>
+            <option>Palliative Care Training Center</option>
+            <option>Senior Living Facility</option>
+            <option>Hospital / Health System</option>
+            <option>Nonprofit / NGO</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Primary Goals (select all that apply) *</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <template x-for="goal in goalOptions" :key="goal">
+              <label class="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all min-h-[44px]"
+                     :class="form.goals.includes(goal) ? 'border-sage-500 bg-sage-50' : 'border-sage-200 hover:bg-sage-50'">
+                <input type="checkbox" :value="goal" x-model="form.goals" class="rounded text-sage-600">
+                <span class="text-sm" x-text="goal"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Additional Goals or Context</label>
+          <textarea x-model="form.additionalGoals" rows="2" placeholder="Any specific outcomes you'd like the curriculum to address..." class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 text-base"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <button @click="validateStep(0) && step++" class="w-full py-4 bg-sage-600 hover:bg-sage-700 text-white font-semibold rounded-xl shadow-lg transition-all min-h-[52px] text-base">
+      Continue → Cultural & Participant Settings
+    </button>
+  </div>
+
+  <!-- Step 2: Cultural & Participant Profile -->
+  <div x-show="step === 1 && !currentCurriculum" x-cloak class="fade-in space-y-5">
+    <div class="bg-white rounded-2xl shadow-sm p-6">
+      <h2 class="font-serif text-xl font-bold text-sage-800 mb-1">🌍 Cultural & Participant Profile</h2>
+      <p class="text-sage-500 text-sm mb-5">Help us understand who the curriculum is for.</p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Cultural/Faith Traditions (select all that apply)</label>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <template x-for="c in cultureOptions" :key="c">
+              <label class="flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all min-h-[44px]"
+                     :class="form.cultures.includes(c) ? 'border-plum-500 bg-plum-50' : 'border-sage-200 hover:bg-sage-50'">
+                <input type="checkbox" :value="c" x-model="form.cultures" class="rounded text-plum-600">
+                <span class="text-sm" x-text="c"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Other Cultural Considerations</label>
+          <input x-model="form.otherCulture" type="text" placeholder="e.g., Indigenous traditions, LGBTQ+ sensitivity..." class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 text-base">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Participant Age Range</label>
+          <select x-model="form.ageRange" class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 bg-white text-base">
+            <option value="mixed">Mixed ages</option>
+            <option value="50-65">50–65 years</option>
+            <option value="65-80">65–80 years</option>
+            <option value="80+">80+ years</option>
+            <option value="caregivers">Primarily caregivers/family</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Cognitive/Physical Considerations</label>
+          <div class="space-y-2">
+            <template x-for="c in accessibilityOptions" :key="c">
+              <label class="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all min-h-[44px]"
+                     :class="form.accessibility.includes(c) ? 'border-warm-500 bg-warm-50' : 'border-sage-200 hover:bg-sage-50'">
+                <input type="checkbox" :value="c" x-model="form.accessibility" class="rounded text-warm-600">
+                <span class="text-sm" x-text="c"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Sensitivity Level</label>
+          <div class="flex items-center gap-4 mt-2">
+            <input type="range" min="1" max="5" x-model="form.sensitivity" class="flex-1 accent-sage-600">
+            <span class="text-sm font-medium bg-sage-100 px-3 py-1 rounded-lg" x-text="sensitivityLabels[form.sensitivity - 1]"></span>
+          </div>
+          <p class="text-xs text-sage-400 mt-1">Higher sensitivity = gentler language, more emotional scaffolding</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Session Format</label>
+          <select x-model="form.format" class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 bg-white text-base">
+            <option value="in-person">In-person workshops</option>
+            <option value="virtual">Virtual/online</option>
+            <option value="hybrid">Hybrid</option>
+            <option value="self-paced">Self-paced / take-home</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Number of Sessions</label>
+          <select x-model="form.sessions" class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 bg-white text-base">
+            <option value="3">3 sessions (compact)</option>
+            <option value="6">6 sessions (standard)</option>
+            <option value="8">8 sessions (comprehensive)</option>
+            <option value="12">12 sessions (deep dive)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex gap-3">
+      <button @click="step--" class="px-6 py-4 bg-white border border-sage-300 text-sage-700 font-semibold rounded-xl transition-all min-h-[52px]">← Back</button>
+      <button @click="step++" class="flex-1 py-4 bg-sage-600 hover:bg-sage-700 text-white font-semibold rounded-xl shadow-lg transition-all min-h-[52px] text-base">
+        Continue → Local Resources
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 3: Local Resources -->
+  <div x-show="step === 2 && !currentCurriculum" x-cloak class="fade-in space-y-5">
+    <div class="bg-white rounded-2xl shadow-sm p-6">
+      <h2 class="font-serif text-xl font-bold text-sage-800 mb-1">📋 Local Resources & Customization</h2>
+      <p class="text-sage-500 text-sm mb-5">Add local resources to make the curriculum relevant to your community.</p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Local Legal Resources</label>
+          <textarea x-model="form.legalResources" rows="2" placeholder="e.g., County legal aid, local elder law attorneys, advance directive forms..." class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 text-base"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Community Support Services</label>
+          <textarea x-model="form.communityResources" rows="2" placeholder="e.g., Grief support groups, chaplaincy services, social workers..." class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 text-base"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Preferred Language(s)</label>
+          <input x-model="form.languages" type="text" placeholder="e.g., English, Spanish, Mandarin" class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 text-base">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Include These Module Types</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <template x-for="m in moduleTypeOptions" :key="m">
+              <label class="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all min-h-[44px]"
+                     :class="form.moduleTypes.includes(m) ? 'border-sage-500 bg-sage-50' : 'border-sage-200 hover:bg-sage-50'">
+                <input type="checkbox" :value="m" x-model="form.moduleTypes" class="rounded text-sage-600">
+                <span class="text-sm" x-text="m"></span>
+              </label>
+            </template>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-sage-700 mb-1">Special Instructions</label>
+          <textarea x-model="form.specialInstructions" rows="2" placeholder="Anything else the AI should know when building your curriculum..." class="w-full px-4 py-3 rounded-xl border border-sage-200 focus:ring-2 focus:ring-sage-400 text-base"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex gap-3">
+      <button @click="step--" class="px-6 py-4 bg-white border border-sage-300 text-sage-700 font-semibold rounded-xl transition-all min-h-[52px]">← Back</button>
+      <button @click="generateCurriculum()" :disabled="generating" class="flex-1 py-4 bg-warm-600 hover:bg-warm-700 text-white font-semibold rounded-xl shadow-lg transition-all min-h-[52px] text-base disabled:opacity-50">
+        <span x-show="!generating">🪄 Generate Curriculum</span>
+        <span x-show="generating" class="flex items-center justify-center gap-2"><span class="spinner"></span> Building your curriculum...</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Generation Progress -->
+  <div x-show="generating" x-cloak class="fade-in mt-6">
+    <div class="bg-white rounded-2xl shadow-sm p-6 text-center">
+      <div class="text-4xl mb-4">🕊️</div>
+      <h3 class="font-serif text-lg font-bold text-sage-800 mb-2">Crafting Your Legacy Curriculum</h3>
+      <p class="text-sage-500 text-sm mb-4" x-text="generatingStatus"></p>
+      <div class="w-full bg-sage-100 rounded-full h-2 overflow-hidden">
+        <div class="bg-sage-500 h-2 rounded-full transition-all duration-1000" :style="'width:' + generatingProgress + '%'"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generated Curriculum View -->
+  <div x-show="currentCurriculum" x-cloak class="fade-in space-y-5">
+
+    <!-- Curriculum Header -->
+    <div class="bg-white rounded-2xl shadow-sm p-6">
+      <div class="flex items-start justify-between">
+        <div>
+          <h2 class="font-serif text-xl font-bold text-sage-800" x-text="currentCurriculum?.title || form.orgName + ' Legacy Curriculum'"></h2>
+          <p class="text-sage-500 text-sm mt-1" x-text="currentCurriculum?.subtitle || ''"></p>
+          <div class="flex flex-wrap gap-2 mt-3">
+            <span class="text-xs bg-sage-100 text-sage-600 px-2 py-1 rounded-full" x-text="form.orgType"></span>
+            <span class="text-xs bg-plum-100 text-plum-600 px-2 py-1 rounded-full" x-text="form.sessions + ' sessions'"></span>
+            <span class="text-xs bg-warm-100 text-warm-600 px-2 py-1 rounded-full" x-text="form.format"></span>
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-4 no-print">
+        <button @click="saveCurriculum()" class="px-4 py-2 bg-sage-600 text-white rounded-xl text-sm font-medium hover:bg-sage-700 min-h-[44px]">💾 Save</button>
+        <button @click="printCurriculum()" class="px-4 py-2 bg-white border border-sage-300 text-sage-700 rounded-xl text-sm font-medium hover:bg-sage-50 min-h-[44px]">🖨️ Print</button>
+        <button @click="expandAllModules()" class="px-4 py-2 bg-white border border-sage-300 text-sage-700 rounded-xl text-sm font-medium hover:bg-sage-50 min-h-[44px]">📖 Expand All</button>
+        <button @click="resetForm()" class="px-4 py-2 bg-white border border-sage-300 text-sage-700 rounded-xl text-sm font-medium hover:bg-sage-50 min-h-[44px]">➕ New</button>
+      </div>
+    </div>
+
+    <!-- Curriculum Overview -->
+    <div x-show="currentCurriculum?.overview" class="bg-sage-50 rounded-2xl p-6 border border-sage-200">
+      <h3 class="font-serif font-bold text-sage-800 mb-2">📝 Curriculum Overview</h3>
+      <div class="prose prose-sm text-sage-700 leading-relaxed" x-html="renderMarkdown(currentCurriculum?.overview || '')"></div>
+    </div>
+
+    <!-- Modules -->
+    <div class="space-y-4">
+      <h3 class="font-serif font-bold text-lg text-sage-800 no-print">📚 Workshop Modules</h3>
+      <template x-for="(mod, idx) in currentCurriculum?.modules || []" :key="idx">
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden module-card">
+          <!-- Module Header -->
+          <div @click="toggleModule(idx)" class="p-5 cursor-pointer flex items-center gap-4 no-print min-h-[60px]">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                 :class="['bg-sage-500','bg-plum-500','bg-warm-500','bg-sage-600','bg-plum-600','bg-warm-600','bg-sage-700','bg-plum-700','bg-warm-700','bg-sage-400','bg-plum-400','bg-warm-400'][idx % 12]"
+                 x-text="idx + 1"></div>
+            <div class="flex-1 min-w-0">
+              <h4 class="font-semibold text-sage-800 truncate" x-text="mod.title"></h4>
+              <p class="text-xs text-sage-400" x-text="mod.duration || ''"></p>
+            </div>
+            <svg class="w-5 h-5 text-sage-400 transform transition-transform flex-shrink-0" :class="openModules.includes(idx) ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </div>
+
+          <!-- Module Content -->
+          <div x-show="openModules.includes(idx)" x-collapse class="px-5 pb-5 border-t border-sage-100">
+            <!-- Tabs -->
+            <div class="flex gap-1 overflow-x-auto py-3 border-b border-sage-100 no-print">
+              <button @click="moduleTab[idx] = 'guide'" class="px-3 py-2 text-sm rounded-lg whitespace-nowrap min-h-[44px]"
+                      :class="(moduleTab[idx] || 'guide') === 'guide' ? 'bg-sage-100 text-sage-700 font-medium' : 'text-sage-400 hover:bg-sage-50'">📋 Facilitator Guide</button>
+              <button @click="moduleTab[idx] = 'handout'" class="px-3 py-2 text-sm rounded-lg whitespace-nowrap min-h-[44px]"
+                      :class="moduleTab[idx] === 'handout' ? 'bg-sage-100 text-sage-700 font-medium' : 'text-sage-400 hover:bg-sage-50'">📄 Handout</button>
+              <button @click="moduleTab[idx] = 'activities'" class="px-3 py-2 text-sm rounded-lg whitespace-nowrap min-h-[44px]"
+                      :class="moduleTab[idx] === 'activities' ? 'bg-sage-100 text-sage-700 font-medium' : 'text-sage-400 hover:bg-sage-50'">🎯 Activities</button>
+              <button @click="moduleTab[idx] = 'prompts'" class="px-3 py-2 text-sm rounded-lg whitespace-nowrap min-h-[44px]"
+                      :class="moduleTab[idx] === 'prompts' ? 'bg-sage-100 text-sage-700 font-medium' : 'text-sage-400 hover:bg-sage-50'">💬 Prompts</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="pt-4 prose prose-sm max-w-none">
+              <div x-show="(moduleTab[idx] || 'guide') === 'guide'" x-html="renderMarkdown(mod.facilitatorGuide || '')"></div>
+              <div x-show="moduleTab[idx] === 'handout'" x-html="renderMarkdown(mod.handout || '')"></div>
+              <div x-show="moduleTab[idx] === 'activities'" x-html="renderMarkdown(mod.activities || '')"></div>
+              <div x-show="moduleTab[idx] === 'prompts'" x-html="renderMarkdown(mod.multimediaPrompts || '')"></div>
+            </div>
+
+            <!-- Print version shows all -->
+            <div class="hidden print-only pt-4 prose prose-sm max-w-none">
+              <h5 class="font-bold">Facilitator Guide</h5>
+              <div x-html="renderMarkdown(mod.facilitatorGuide || '')"></div>
+              <h5 class="font-bold mt-4">Participant Handout</h5>
+              <div x-html="renderMarkdown(mod.handout || '')"></div>
+              <h5 class="font-bold mt-4">Activities</h5>
+              <div x-html="renderMarkdown(mod.activities || '')"></div>
+              <h5 class="font-bold mt-4">Discussion & Multimedia Prompts</h5>
+              <div x-html="renderMarkdown(mod.multimediaPrompts || '')"></div>
+            </div>
+
+            <!-- Regenerate single module -->
+            <div class="mt-4 pt-3 border-t border-sage-100 no-print">
+              <button @click="regenerateModule(idx)" :disabled="regeneratingModule === idx" class="px-4 py-2 text-sm bg-plum-50 text-plum-700 rounded-xl hover:bg-plum-100 min-h-[44px] font-medium">
+                <span x-show="regeneratingModule !== idx">🔄 Regenerate Module</span>
+                <span x-show="regeneratingModule === idx" class="flex items-center gap-2"><span class="spinner" style="border-top-color:#833d5c;border-color:rgba(131,61,92,0.2)"></span> Regenerating...</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Appendix: Resources -->
+    <div x-show="currentCurriculum?.resources" class="bg-warm-50 rounded-2xl p-6 border border-warm-200">
+      <h3 class="font-serif font-bold text-warm-800 mb-2">📎 Resources & References</h3>
+      <div class="prose prose-sm text-warm-700" x-html="renderMarkdown(currentCurriculum?.resources || '')"></div>
+    </div>
+  </div>
+
+  <!-- Error Message -->
+  <div x-show="errorMsg" x-cloak class="mt-6 bg-red-50 border border-red-200 rounded-2xl p-5 no-print">
+    <div class="flex items-start gap-3">
+      <span class="text-xl">⚠️</span>
+      <div>
+        <h4 class="font-semibold text-red-800">Something went wrong</h4>
+        <p class="text-sm text-red-600 mt-1" x-text="errorMsg"></p>
+        <button @click="errorMsg = ''" class="mt-2 text-sm text-red-500 underline">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Onboarding hint -->
+  <div x-show="step === 0 && !currentCurriculum && savedCurricula.length === 0 && !generating" x-cloak class="mt-8 text-center text-sage-400 text-sm">
+    <p>🌿 Welcome! This tool helps you create culturally-sensitive, facilitator-ready curricula for end-of-life legacy planning workshops.</p>
+    <p class="mt-1">Fill in your organization details to get started.</p>
+  </div>
+
+</main>
+
+<script>
+// Global tracking variables
+window.totalAIInputTokens = 0;
+window.totalAIOutputTokens = 0;
+window.totalAITime = 0;
+window.aliasTimes = {};
+
+function app() {
+  return {
+    step: 0,
+    steps: ['Organization', 'Participants', 'Resources'],
+    generating: false,
+    generatingStatus: '',
+    generatingProgress: 0,
+    currentCurriculum: null,
+    showSaved: false,
+    savedCurricula: [],
+    errorMsg: '',
+    openModules: [],
+    moduleTab: {},
+    regeneratingModule: -1,
+
+    form: {
+      orgName: '',
+      orgType: '',
+      goals: [],
+      additionalGoals: '',
+      cultures: [],
+      otherCulture: '',
+      ageRange: 'mixed',
+      accessibility: [],
+      sensitivity: 3,
+      format: 'in-person',
+      sessions: '6',
+      legalResources: '',
+      communityResources: '',
+      languages: 'English',
+      moduleTypes: ['Legacy storytelling', 'Advance directive planning', 'Ethical will writing'],
+      specialInstructions: ''
+    },
+
+    goalOptions: [
+      'Legacy storytelling & narrative preservation',
+      'Advance directive & legal planning',
+      'Emotional/spiritual preparation',
+      'Family communication facilitation',
+      'Grief & bereavement support',
+      'Ethical will / values documentation',
+      'Cultural rituals & traditions',
+      'Caregiver training & support'
+    ],
+
+    cultureOptions: [
+      'Christian', 'Jewish', 'Muslim', 'Buddhist', 'Hindu',
+      'Secular/Non-religious', 'Native American', 'African American',
+      'Latino/Hispanic', 'East Asian', 'South Asian', 'Multi-cultural'
+    ],
+
+    accessibilityOptions: [
+      'Low literacy / simple language needed',
+      'Hearing impairment accommodations',
+      'Vision impairment accommodations',
+      'Mild cognitive impairment considerations',
+      'Limited mobility / seated activities',
+      'Non-English primary language'
+    ],
+
+    moduleTypeOptions: [
+      'Legacy storytelling',
+      'Advance directive planning',
+      'Ethical will writing',
+      'Life review & reminiscence',
+      'Family communication',
+      'Grief preparation',
+      'Spiritual/existential reflection',
+      'Digital legacy planning',
+      'Cultural rituals & ceremonies',
+      'Caregiver workshop'
+    ],
+
+    sensitivityLabels: ['Direct', 'Moderate', 'Balanced', 'Gentle', 'Very Gentle'],
+
+    init() {
+      this.loadSavedCurricula();
+      const lastForm = localStorage.getItem('lcb_lastForm');
+      if (lastForm) {
+        try {
+          const parsed = JSON.parse(lastForm);
+          this.form = { ...this.form, ...parsed };
+        } catch(e) {}
+      }
+    },
+
+    validateStep(s) {
+      if (s === 0) {
+        if (!this.form.orgName.trim()) {
+          this.errorMsg = 'Please enter your organization name.';
+          return false;
+        }
+        if (!this.form.orgType) {
+          this.errorMsg = 'Please select your organization type.';
+          return false;
+        }
+        if (this.form.goals.length === 0) {
+          this.errorMsg = 'Please select at least one primary goal.';
+          return false;
+        }
+      }
+      this.errorMsg = '';
+      return true;
+    },
+
+    renderMarkdown(text) {
+      if (!text) return '';
+      try {
+        return marked.parse(text);
+      } catch(e) {
+        return text.replace(/\n/g, '<br>');
+      }
+    },
+
+    toggleModule(idx) {
+      const i = this.openModules.indexOf(idx);
+      if (i > -1) this.openModules.splice(i, 1);
+      else this.openModules.push(idx);
+    },
+
+    expandAllModules() {
+      const mods = this.currentCurriculum?.modules || [];
+      if (this.openModules.length === mods.length) {
+        this.openModules = [];
+      } else {
+        this.openModules = mods.map((_, i) => i);
+      }
+    },
+
+    async callAI(prompt, retries = 3) {
+      const startTime = Date.now();
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          const response = await fetch('https://16504442930.work/run_prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              alias: 'genericAI',
+              params: { prompt }
+            })
+          });
+          const data = await response.json();
+          const elapsed = Date.now() - startTime;
+          window.totalAITime += elapsed;
+          window.aliasTimes['genericAI'] = (window.aliasTimes['genericAI'] || 0) + elapsed;
+          if (data.input_tokens) window.totalAIInputTokens += data.input_tokens;
+          if (data.output_tokens) window.totalAIOutputTokens += data.output_tokens;
+
+          if (data.error) {
+            if (attempt < retries - 1) continue;
+            const friendlyError = await this.formatError(data);
+            throw new Error(friendlyError);
+          }
+          return data;
+        } catch(e) {
+          if (attempt === retries - 1) throw e;
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    },
+
+    async formatError(apiResponse) {
+      try {
+        const errPrompt = `You are a helpful assistant. A user of the "End-of-Life Legacy Curriculum Builder" app encountered an error. 
+Reformat this error into a friendly, empowering message that helps them fix it.
+API Response: ${JSON.stringify(apiResponse)}
+Return a JSON object with exactly this structure: {"message": "<string: a friendly 1-2 sentence error message>"}`;
+        const resp = await fetch('https://16504442930.work/run_prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alias: 'genericAI', params: { prompt: errPrompt } })
+        });
+        const data = await resp.json();
+        return data.message || 'Something unexpected happened. Please try again.';
+      } catch(e) {
+        return 'An error occurred. Please try again. Details: ' + JSON.stringify(apiResponse);
+      }
+    },
+
+    async generateCurriculum() {
+      this.generating = true;
+      this.generatingProgress = 5;
+      this.generatingStatus = 'Analyzing your organization profile...';
+      this.errorMsg = '';
+
+      localStorage.setItem('lcb_lastForm', JSON.stringify(this.form));
+
+      try {
+        // Step 1: Generate curriculum outline
+        this.generatingProgress = 10;
+        this.generatingStatus = 'Designing curriculum structure...';
+
+        const outlinePrompt = `You are an expert curriculum designer specializing in end-of-life education, hospice care, palliative care training, and legacy planning. 
+
+Create a detailed curriculum outline for the following organization:
+
+ORGANIZATION: ${this.form.orgName}
+TYPE: ${this.form.orgType}
+PRIMARY GOALS: ${this.form.goals.join(', ')}
+ADDITIONAL GOALS: ${this.form.additionalGoals || 'None specified'}
+CULTURAL TRADITIONS TO HONOR: ${this.form.cultures.join(', ') || 'General/secular'}
+OTHER CULTURAL NOTES: ${this.form.otherCulture || 'None'}
+PARTICIPANT AGE RANGE: ${this.form.ageRange}
+ACCESSIBILITY NEEDS: ${this.form.accessibility.join(', ') || 'Standard'}
+SENSITIVITY LEVEL: ${this.sensitivityLabels[this.form.sensitivity - 1]} (${this.form.sensitivity}/5)
+FORMAT: ${this.form.format}
+NUMBER OF SESSIONS: ${this.form.sessions}
+MODULE TYPES REQUESTED: ${this.form.moduleTypes.join(', ')}
+LANGUAGES: ${this.form.languages || 'English'}
+LOCAL LEGAL RESOURCES: ${this.form.legalResources || 'Not specified'}
+COMMUNITY RESOURCES: ${this.form.communityResources || 'Not specified'}
+SPECIAL INSTRUCTIONS: ${this.form.specialInstructions || 'None'}
+
+Return a JSON object with EXACTLY this structure (all values must be strings):
+{
+  "title": "<string: a meaningful curriculum title>",
+  "subtitle": "<string: a 1-sentence description>",
+  "overview": "<string: 2-3 paragraph markdown overview of the curriculum including purpose, audience, structure, and how to use it>",
+  "modules": [
+    {
+      "title": "<string: module title>",
+      "duration": "<string: e.g., '90 minutes'>",
+      "summary": "<string: 1-2 sentence summary of what this module covers>"
+    }
+  ],
+  "resources": "<string: markdown formatted list of recommended resources, references, and the local resources provided>"
+}
+
+The "modules" array must have exactly ${this.form.sessions} items.
+Each module should be culturally sensitive to: ${this.form.cultures.join(', ') || 'diverse audiences'}.
+Use ${this.sensitivityLabels[this.form.sensitivity - 1].toLowerCase()} language appropriate for sensitivity level ${this.form.sensitivity}/5.
+Modules should build progressively and include a good mix of the requested module types.
+Make the curriculum practical, compassionate, and facilitator-ready.`;
+
+        const outlineData = await this.callAI(outlinePrompt);
+        this.generatingProgress = 25;
+
+        if (!outlineData.modules || !Array.isArray(outlineData.modules)) {
+          throw new Error('The AI response did not include the expected curriculum structure. Please try again.');
+        }
+
+        this.currentCurriculum = {
+          title: outlineData.title || this.form.orgName + ' Legacy Curriculum',
+          subtitle: outlineData.subtitle || '',
+          overview: outlineData.overview || '',
+          modules: outlineData.modules.map(m => ({
+            ...m,
+            facilitatorGuide: '',
+            handout: '',
+            activities: '',
+            multimediaPrompts: ''
+          })),
+          resources: outlineData.resources || ''
+        };
+
+        // Step 2: Generate detailed content for each module
+        const numModules = this.currentCurriculum.modules.length;
+
+        // Generate in batches of 2 to avoid too many parallel requests
+        for (let i = 0; i < numModules; i += 2) {
+          const batch = [];
+          for (let j = i; j < Math.min(i + 2, numModules); j++) {
+            batch.push(this.generateModuleContent(j));
+          }
+          this.generatingStatus = `Crafting module ${i + 1}${i + 1 < numModules ? '-' + Math.min(i + 2, numModules) : ''} of ${numModules}...`;
+          await Promise.all(batch);
+          this.generatingProgress = 25 + Math.round((Math.min(i + 2, numModules) / numModules) * 70);
+        }
+
+        this.generatingProgress = 100;
+        this.generatingStatus = 'Curriculum complete! 🎉';
+        await new Promise(r => setTimeout(r, 800));
+
+        this.openModules = [0];
+        this.generating = false;
+
+      } catch (e) {
+        this.generating = false;
+        this.errorMsg = e.message || 'Failed to generate curriculum. Please try again.';
+      }
+    },
+
+    async generateModuleContent(idx) {
+      const mod = this.currentCurriculum.modules[idx];
+      const numModules = this.currentCurriculum.modules.length;
+
+      const modulePrompt = `You are an expert hospice and end-of-life curriculum writer creating detailed facilitation materials.
+
+CURRICULUM: "${this.currentCurriculum.title}"
+MODULE ${idx + 1} of ${numModules}: "${mod.title}"
+SUMMARY: ${mod.summary}
+DURATION: ${mod.duration}
+
+CONTEXT:
+- Organization: ${this.form.orgName} (${this.form.orgType})
+- Cultural sensitivity for: ${this.form.cultures.join(', ') || 'diverse audiences'}
+- Sensitivity level: ${this.sensitivityLabels[this.form.sensitivity - 1]} (${this.form.sensitivity}/5)
+- Format: ${this.form.format}
+- Accessibility needs: ${this.form.accessibility.join(', ') || 'Standard'}
+- Participants: ${this.form.ageRange} age range
+- Languages: ${this.form.languages || 'English'}
+- Local legal resources: ${this.form.legalResources || 'general resources'}
+- Community resources: ${this.form.communityResources || 'general resources'}
+
+Return a JSON object with EXACTLY this structure (all values must be strings in markdown format):
+{
+  "facilitatorGuide": "<string: A complete facilitator guide in markdown. Include: learning objectives (3-4), materials needed, room setup, detailed timeline with minute-by-minute breakdown, facilitation tips, cultural sensitivity notes, how to handle emotional moments, and wrap-up/transition to next session. Use headers, bullet points, and bold text. Must be at least 400 words.>",
+  "handout": "<string: A participant-facing handout in markdown. Include: session title, key concepts explained simply, reflection questions, fill-in sections for personal notes, and a 'take-home action' section. Language should be warm and ${this.sensitivityLabels[this.form.sensitivity - 1].toLowerCase()}. Avoid clinical jargon. Must be at least 300 words.>",
+  "activities": "<string: 2-3 detailed activities in markdown. Each activity should have: a name, time needed, materials, step-by-step instructions, adaptation options for different abilities, and debrief questions. Activities should be engaging, meaningful, and appropriate for the cultural context. Must be at least 350 words.>",
+  "multimediaPrompts": "<string: In markdown, provide: 3-4 discussion prompts/questions for group dialogue, 2 suggested multimedia resources (videos, music, readings) with descriptions, 1 creative expression prompt (writing, art, music), and optional technology-enhanced activities if doing ${this.form.format} format. Must be at least 250 words.>"
+}
+
+Write with compassion, cultural awareness, and practical detail. Content must be facilitator-ready with no placeholders.`;
+
+      try {
+        const data = await this.callAI(modulePrompt);
+        this.currentCurriculum.modules[idx] = {
+          ...mod,
+          facilitatorGuide: data.facilitatorGuide || '*Content generation pending. Try regenerating this module.*',
+          handout: data.handout || '*Content generation pending. Try regenerating this module.*',
+          activities: data.activities || '*Content generation pending. Try regenerating this module.*',
+          multimediaPrompts: data.multimediaPrompts || '*Content generation pending. Try regenerating this module.*'
+        };
+      } catch(e) {
+        this.currentCurriculum.modules[idx] = {
+          ...mod,
+          facilitatorGuide: `*⚠️ Failed to generate: ${e.message}. Please use the "Regenerate Module" button to try again.*`,
+          handout: '',
+          activities: '',
+          multimediaPrompts: ''
+        };
+      }
+    },
+
+    async regenerateModule(idx) {
+      this.regeneratingModule = idx;
+      try {
+        await this.generateModuleContent(idx);
+      } catch(e) {
+        this.errorMsg = e.message;
+      }
+      this.regeneratingModule = -1;
+    },
+
+    saveCurriculum() {
+      if (!this.currentCurriculum) return;
+      const saved = {
+        ...this.currentCurriculum,
+        form: { ...this.form },
+        orgName: this.form.orgName,
+        savedAt: new Date().toISOString()
+      };
+
+      const existing = JSON.parse(localStorage.getItem('lcb_saved') || '[]');
+      // Check if already saved (by title + org), update if so
+      const existingIdx = existing.findIndex(c => c.title === saved.title && c.orgName === saved.orgName);
+      if (existingIdx > -1) {
+        existing[existingIdx] = saved;
+      } else {
+        existing.unshift(saved);
+      }
+      localStorage.setItem('lcb_saved', JSON.stringify(existing));
+      this.loadSavedCurricula();
+      this.errorMsg = '';
+
+      // Quick visual feedback
+      const el = document.createElement('div');
+      el.className = 'fixed top-4 right-4 bg-sage-600 text-white px-6 py-3 rounded-xl shadow-lg z-[999] fade-in font-medium';
+      el.textContent = '✅ Curriculum saved!';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2000);
+    },
+
+    loadSavedCurricula() {
+      try {
+        this.savedCurricula = JSON.parse(localStorage.getItem('lcb_saved') || '[]');
+      } catch(e) {
+        this.savedCurricula = [];
+      }
+    },
+
+    loadCurriculum(curr) {
+      this.currentCurriculum = {
+        title: curr.title,
+        subtitle: curr.subtitle,
+        overview: curr.overview,
+        modules: curr.modules,
+        resources: curr.resources
+      };
+      if (curr.form) {
+        this.form = { ...this.form, ...curr.form };
+      }
+      this.openModules = [0];
+      this.moduleTab = {};
+      this.step = 0;
+    },
+
+    deleteCurriculum(idx) {
+      if (!confirm('Delete this saved curriculum?')) return;
+      const existing = JSON.parse(localStorage.getItem('lcb_saved') || '[]');
+      existing.splice(idx, 1);
+      localStorage.setItem('lcb_saved', JSON.stringify(existing));
+      this.loadSavedCurricula();
+    },
+
+    resetForm() {
+      this.currentCurriculum = null;
+      this.step = 0;
+      this.openModules = [];
+      this.moduleTab = {};
+      this.errorMsg = '';
+      this.generating = false;
+    },
+
+    printCurriculum() {
+      // Expand all modules for printing
+      const mods = this.currentCurriculum?.modules || [];
+      this.openModules = mods.map((_, i) => i);
+      setTimeout(() => window.print(), 300);
+    }
+  };
+}
+</script>
+</body>
+</html>
